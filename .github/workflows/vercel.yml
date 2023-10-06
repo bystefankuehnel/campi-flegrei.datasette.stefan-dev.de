@@ -1,6 +1,7 @@
 name: "Vercel"
 
 on:
+  push:
   schedule:
     - cron: '*/5 * * * *'  # every five minutes
 
