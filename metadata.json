@@ -1,0 +1,9 @@
+{
+    "title": "Campi Flegrei Earthquake Events",
+    "license": "CC BY-NC 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-nc/4.0/",
+    "source": "Osservatorio Vesuviano - Istituto Nazionale di Geofisica e Vulcanologia",
+    "source_url": "https://terremoti.ov.ingv.it/gossip/flegrei/",
+    "about": "campi-flegrei.datasette.stefan-dev.de",
+    "about_url": "https://github.com/bystefankuehnel/campi-flegrei.datasette.stefan-dev.de"
+}

@@ -1,0 +1,123 @@
+name: "Vercel"
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # every five minutes
+
+permissions:
+  contents: "write"
+
+jobs:
+  vercel:
+    runs-on: "ubuntu-latest"
+    
+    steps:
+      - name: "Checkout Repository"
+        uses: "actions/checkout@v4"
+
+      - name: "Reactivate Repository"
+        uses: "custom-workflows/reactivate@latest"
+        with: 
+          commit_message: "github-actions: Reactivate repository"
+          committer_username: "GitHub Actions [Bot]"
+          committer_email: "github-actions[bot]@users.noreply.github.com"
+          days_elapsed: 50
+
+      - name: "Prior E-Tag"
+        id: "prior-etag"
+        continue-on-error: true
+        shell: "bash"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          gh release download \
+            --repo ${{ github.repository }} \
+            --pattern "etag.txt" \
+            --output "prior-etag.txt"
+
+          prior_etag=$(cat prior-etag.txt)
+          echo "prior_etag=$prior_etag" >> "$GITHUB_OUTPUT"
+
+          echo $prior_etag
+
+      - name: "Current E-Tag"
+        id: "current-etag"
+        shell: "bash"
+        run: |-
+          curl \
+            --head \
+            --etag-save current-etag.txt \
+            https://terremoti.ov.ingv.it/gossip/flegrei/events.csv
+
+          current_etag=$(cat current-etag.txt)
+          echo "current_etag=$current_etag" >> "$GITHUB_OUTPUT"
+
+          echo $current_etag
+
+      - name: "Setup Python"
+        uses: "actions/setup-python@v4"
+        if: ${{ steps.prior-etag.outcome == 'failure' || (steps.prior-etag.outputs.prior_etag != steps.current-etag.outputs.current_etag ) }}
+        with:
+          python-version: "3.12"
+
+      - name: "Install Dependencies"
+        shell: "bash"
+        if: ${{ steps.prior-etag.outcome == 'failure' || (steps.prior-etag.outputs.prior_etag != steps.current-etag.outputs.current_etag ) }}
+        run: |-
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: "Download Data"
+        shell: "bash"
+        if: ${{ steps.prior-etag.outcome == 'failure' || (steps.prior-etag.outputs.prior_etag != steps.current-etag.outputs.current_etag ) }}
+        run: |-
+          curl \
+            --output events.csv \
+            https://terremoti.ov.ingv.it/gossip/flegrei/events.csv
+
+      - name: "Create SQLite DB"
+        shell: "bash"
+        if: ${{ steps.prior-etag.outcome == 'failure' || (steps.prior-etag.outputs.prior_etag != steps.current-etag.outputs.current_etag ) }}
+        run: |-
+          sqlite-utils insert \
+            --csv \
+            events.db \
+            events \
+            events.csv
+
+      - name: "Deploy [Vercel]"
+        if: ${{ steps.prior-etag.outcome == 'failure' || (steps.prior-etag.outputs.prior_etag != steps.current-etag.outputs.current_etag ) }}
+        env:
+          VERCEL_PROJECT: ${{ secrets.VERCEL_PROJECT }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: "bash"
+        run: |-
+          datasette publish vercel events.db \
+            --branch main \
+            --metadata metadata.json \
+            --token $VERCEL_TOKEN \
+            --project $VERCEL_PROJECT \
+            --install datasette-graphql
+
+      - name: "Remove Prior E-Tag"
+        continue-on-error: true
+        shell: "bash"
+        if: ${{ steps.prior-etag.outcome == 'failure' || (steps.prior-etag.outputs.prior_etag != steps.current-etag.outputs.current_etag ) }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          gh release delete latest \
+            --cleanup-tag \
+            --yes
+
+      - name: "Upload E-Tag"
+        shell: "bash"
+        if: ${{ steps.prior-etag.outcome == 'failure' || (steps.prior-etag.outputs.prior_etag != steps.current-etag.outputs.current_etag ) }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          mv current-etag.txt etag.txt
+
+          gh release create latest \
+            --title "Latest" \
+            etag.txt
