@@ -98,8 +98,7 @@ jobs:
             --metadata metadata.json \
             --token $VERCEL_TOKEN \
             --project $VERCEL_PROJECT \
-            --install datasette-cluster-map \
-            --install datasette-graphql
+            --install datasette-cluster-map
 
       - name: "Remove Prior E-Tag"
         continue-on-error: true
